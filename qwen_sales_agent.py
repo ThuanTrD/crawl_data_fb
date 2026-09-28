@@ -126,8 +126,8 @@ def is_qwen_available():
         _QWEN_AVAILABLE = False
     return _QWEN_AVAILABLE
 
-def call_qwen_agent(prompt: str, system_prompt: str = "", timeout_sec: int = 2) -> Optional[str]:
-    """Calls Qwen3-VL-30B API with SSL bypass, timeout protection, and circuit breaker."""
+def call_qwen_agent(prompt: str, system_prompt: str = "", timeout_sec: int = 4) -> Optional[str]:
+    """Calls Qwen3-VL-30B API with SSL bypass, timeout protection, and fast recovery."""
     global _QWEN_CHAT_DISABLED_UNTIL
     if time.time() < _QWEN_CHAT_DISABLED_UNTIL:
         return None
@@ -163,9 +163,83 @@ def call_qwen_agent(prompt: str, system_prompt: str = "", timeout_sec: int = 2) 
             cleaned = re.sub(r"<think>[\s\S]*?</think>", "", content).strip()
             return cleaned
     except Exception:
-        # If upstream chat/completions is busy or timing out, trip circuit breaker for 60 seconds
-        _QWEN_CHAT_DISABLED_UNTIL = time.time() + 60
+        # If upstream GPU API is busy or timing out, brief 10s cooldown
+        _QWEN_CHAT_DISABLED_UNTIL = time.time() + 10
         return None
+
+def generate_knowledge_pitch(lead_data: Dict[str, Any], knowledge: Dict[str, Any]) -> Dict[str, str]:
+    """Tạo kịch bản tư vấn chốt sales Messenger & Telesale thông minh dựa trên dữ liệu sản phẩm Supabase."""
+    cust_name = lead_data.get("full_name") or lead_data.get("author") or "Quý khách"
+    first_name = cust_name.split()[-1] if cust_name and cust_name != "Quý khách" else "Anh/Chị"
+    
+    meta = lead_data.get("metadata") or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+            
+    comment = (lead_data.get("comment_text") or meta.get("comment_text") or lead_data.get("primary_intent") or "").strip()
+    c_lower = comment.lower()
+    
+    prod_name = knowledge.get("product_name") or lead_data.get("product_interest") or "Giải pháp phần mềm CIC"
+    vendor = knowledge.get("vendor") or "Công ty Cổ phần Công nghệ và Tư vấn CIC (37 Lê Đại Hành, Hà Nội)"
+    usps = knowledge.get("key_usps") or []
+    pricing = knowledge.get("pricing_details") or {}
+    metadata = knowledge.get("metadata") or {}
+    
+    primary_usp = usps[0] if usps else f"Giải pháp {prod_name} chính hãng từ CIC (35+ năm kinh nghiệm)"
+    second_usp = usps[1] if len(usps) > 1 else "Hỗ trợ kỹ thuật trực tiếp bởi đội ngũ kỹ sư CIC tại Việt Nam"
+    
+    # 1. Khách hỏi giá, chi phí, bản quyền, thuê bao
+    if any(k in c_lower for k in ["giá", "báo giá", "thuê bao", "chi phí", "bao tiền", "license", "năm", "mua", "kinh phí", "bản quyền", "hóa đơn", "vat"]):
+        policy = pricing.get("policy") or pricing.get("perpetual_license") or "chính sách bản quyền vĩnh viễn ưu đãi nhất kèm chứng nhận hợp pháp và hóa đơn VAT"
+        messenger_pitch = (
+            f"Dạ em chào anh {first_name}! Em bên Công ty CIC - đơn vị phân phối chính thức giải pháp {prod_name} tại Việt Nam ạ.\n"
+            f"Hiện tại bên em đang có {policy}, hỗ trợ đào tạo chuyển giao và kỹ sư bảo hành kỹ thuật trực tiếp.\n"
+            f"Anh {first_name} dự kiến trang bị cho khoảng bao nhiêu người dùng/máy tính để em gửi bảng báo giá chiết khấu ưu đãi tối đa ngay cho mình nhé ạ!"
+        )
+    # 2. Khách xin link tải, dùng thử, cài test
+    elif any(k in c_lower for k in ["dùng thử", "cài thử", "test", "link tải", "bộ cài", "demo", "tải về", "download", "link"]):
+        messenger_pitch = (
+            f"Dạ em chào anh {first_name}! Em thấy mình đang muốn trải nghiệm thử giải pháp {prod_name} của CIC.\n"
+            f"{prod_name} sở hữu tốc độ xử lý đồ họa mượt mà ({primary_usp}) và tương thích 100% định dạng kỹ thuật hiện hành.\n"
+            f"Em xin phép gửi anh link tải bộ cài chính hãng kèm tài liệu hướng dẫn kích hoạt dùng thử. Nếu cần hỗ trợ cài đặt hoặc hướng dẫn tính năng, đội ngũ kỹ sư CIC sẵn sàng hỗ trợ trực tiếp từ xa cho anh ạ!"
+        )
+    # 3. Khách hỏi kỹ thuật, font, lisp, giật lag, tính toán, TCVN
+    elif any(k in c_lower for k in ["mượt", "lag", "giật", "nặng", "lisp", "font", "shx", "vinacad", "autocad", "tính toán", "mô hình", "tiêu chuẩn", "tcvn", "cấu hình"]):
+        messenger_pitch = (
+            f"Dạ em chào anh {first_name}! Về vấn đề kỹ thuật anh đang quan tâm đối với {prod_name}:\n"
+            f"Sản phẩm được tối ưu hoàn toàn: {primary_usp}. Đặc biệt {second_usp}.\n"
+            f"Em xin phép gửi anh tài liệu kỹ thuật chi tiết và video demo trực quan. Anh có thể nhắn lại em để chuyên gia kỹ sư CIC hỗ trợ giải đáp chuyên sâu cho dự án của mình nhé ạ!"
+        )
+    # 4. Khách yêu cầu inbox / tư vấn riêng
+    elif any(k in c_lower for k in ["ib", "inbox", "nhắn tin", "check ib", "tư vấn"]):
+        messenger_pitch = (
+            f"Dạ em chào anh {first_name}! Em liên hệ với anh từ Công ty Cổ phần Công nghệ và Tư vấn CIC (37 Lê Đại Hành, HN) về giải pháp {prod_name}.\n"
+            f"Bên em là đại diện cung cấp chính hãng: {primary_usp}.\n"
+            f"Em xin phép gửi anh brochure giải pháp và thông tin chính sách ưu đãi qua tin nhắn này. Anh cần tư vấn cho cá nhân hay cho dự án công ty để em hỗ trợ chính xác nhất ạ?"
+        )
+    # 5. Mặc định: Phân tích theo USP & giới thiệu thân thiện
+    else:
+        messenger_pitch = (
+            f"Dạ em chào anh {first_name}! Em thấy mình vừa quan tâm đến bài viết về giải pháp {prod_name} của CIC.\n"
+            f"{prod_name} là {primary_usp}, được hàng nghìn kỹ sư và doanh nghiệp tư vấn xây dựng tại Việt Nam tin dùng.\n"
+            f"Em xin phép gửi anh bản thông tin tính năng nổi bật cùng chính sách hỗ trợ kỹ thuật từ CIC. Anh tham khảo và nhắn em hỗ trợ mình bất cứ lúc nào nhé ạ!"
+        )
+        
+    telesale_script = (
+        f"Dạ alo em chào anh {first_name}, em là chuyên viên tư vấn phần mềm {prod_name} từ Công ty CIC (37 Lê Đại Hành). "
+        f"Em thấy anh có để lại quan tâm '{comment}' về phần mềm trên Facebook. "
+        f"Em gọi để hỗ trợ gửi anh tài liệu kỹ thuật và chính sách báo giá chính hãng ưu đãi nhất của CIC ạ..."
+    )
+    
+    return {
+        "messenger_pitch": messenger_pitch,
+        "telesale_script": telesale_script,
+        "ai_agent": "CIC AI Sales Engine (Supabase KB)"
+    }
+
 
 class QwenCustomerIntelligenceAgent:
     """Agent for customer aggregation, intent analysis, and database-informed sales pitching."""
@@ -312,11 +386,19 @@ Nhiệm vụ: Viết 1 tin nhắn Messenger tư vấn chân thành, tự nhiên,
                 final_pitch = qwen_pitch
                 telesale = f"Dạ alo em chào anh {first_name}, em là chuyên viên tư vấn giải pháp {prod_name} từ {vendor}. Em thấy anh vừa để lại bình luận '{full_text}' trên Facebook nên em liên hệ hỗ trợ tư vấn kỹ thuật và gửi tài liệu demo/báo giá chính hãng ngay cho anh..."
             else:
-                # Nếu Qwen đang bận/quá tải, giữ nguyên dữ liệu cào khách hàng và đánh dấu chờ Qwen xử lý
-                pitch_status = "PENDING_QWEN"
-                ai_agent_name = "Qwen3-VL-30B (Chờ sinh thoại)"
-                final_pitch = None
-                telesale = None
+                # Nếu Qwen bận/quá tải, sinh kịch bản ngay bằng Knowledge Base Supabase
+                kb_pitch = generate_knowledge_pitch({
+                    "full_name": cust["author_name"],
+                    "comment_text": full_text,
+                    "product_interest": prod_name,
+                    "pain_point": pain_point,
+                    "intent": intent,
+                    "phone": cust["phone"]
+                }, self.knowledge)
+                pitch_status = "GENERATED_BY_KNOWLEDGE"
+                ai_agent_name = "CIC AI Sales Engine (Supabase KB)"
+                final_pitch = kb_pitch["messenger_pitch"]
+                telesale = kb_pitch["telesale_script"]
 
             fingerprint = hashlib.md5(f"{cust['user_id'] or cust['author_name']}_{self.post_id}".encode("utf-8")).hexdigest()
 
@@ -599,35 +681,38 @@ Bình luận của khách hàng trên Facebook: "{comment_text}"
 
 Nhiệm vụ: Dựa trên đúng dữ liệu sản phẩm trong database ở trên, hãy viết 1 tin nhắn Messenger tư vấn chân thành, tự nhiên, đánh trúng nhu cầu khách hàng. Kêu gọi hành động gửi báo giá hoặc tài liệu demo/dùng thử. Xưng hô Em - Anh/Chị {first_name}. Viết ngắn gọn 3-4 câu."""
 
-    # 3. Gọi Qwen3-VL-30B
-    pitch = call_qwen_agent(prompt, timeout_sec=15)
-    if pitch:
-        meta["messenger_pitch"] = pitch
-        meta["ai_agent"] = "Qwen3-VL-30B"
-        meta["pitch_status"] = "GENERATED_BY_QWEN"
-        meta["pitch_updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        telesale = f"Dạ alo em chào anh {first_name}, em là chuyên viên tư vấn giải pháp {prod_name} từ {vendor}. Em thấy anh vừa để lại bình luận '{comment_text}' trên Facebook nên em liên hệ hỗ trợ tư vấn kỹ thuật và gửi tài liệu demo/báo giá chính hãng ngay cho anh..."
-        meta["telesale_script"] = telesale
+    # 3. Thử gọi Qwen3-VL-30B với timeout bảo vệ 4s
+    pitch = call_qwen_agent(prompt, timeout_sec=4)
+    ai_agent_used = "Qwen3-VL-30B"
 
-        cur.execute("UPDATE public.leads SET metadata = %s::jsonb, updated_at = NOW() WHERE id = %s;", (json.dumps(meta), lead_id))
-        conn.commit()
-        cur.close()
-        conn.close()
-        return {
-            "success": True,
-            "lead_id": lead_id,
-            "product": prod_name,
-            "messenger_pitch": pitch,
-            "telesale_script": telesale,
-            "ai_agent": "Qwen3-VL-30B"
-        }
+    # 4. Nếu Qwen GPU bận hoặc timeout, lập tức kích hoạt bộ sinh kịch bản Database Supabase
+    if not pitch:
+        kb_res = generate_knowledge_pitch(lead_dict, knowledge)
+        pitch = kb_res["messenger_pitch"]
+        telesale = kb_res["telesale_script"]
+        ai_agent_used = "CIC AI Sales Engine (Supabase KB)"
     else:
-        cur.close()
-        conn.close()
-        return {
-            "success": False,
-            "error": "Mô hình Qwen3-VL-30B hiện đang trong hàng đợi GPU hoặc quá thời gian phản hồi (Timeout). Dữ liệu khách hàng vẫn được bảo toàn trong Database."
-        }
+        telesale = f"Dạ alo em chào anh {first_name}, em là chuyên viên tư vấn giải pháp {prod_name} từ {vendor}. Em thấy anh vừa để lại bình luận '{comment_text}' trên Facebook nên em liên hệ hỗ trợ tư vấn kỹ thuật và gửi tài liệu demo/báo giá chính hãng ngay cho anh..."
+
+    meta["messenger_pitch"] = pitch
+    meta["ai_agent"] = ai_agent_used
+    meta["pitch_status"] = "GENERATED"
+    meta["pitch_updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    meta["telesale_script"] = telesale
+
+    cur.execute("UPDATE public.leads SET metadata = %s::jsonb, updated_at = NOW() WHERE id = %s;", (json.dumps(meta), lead_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return {
+        "success": True,
+        "lead_id": lead_id,
+        "product": prod_name,
+        "messenger_pitch": pitch,
+        "telesale_script": telesale,
+        "ai_agent": ai_agent_used
+    }
 
 def crawl_and_analyze_selected_posts(selected_posts: List[Dict[str, Any]], keyword: str = "enjicad") -> Dict[str, Any]:
     """

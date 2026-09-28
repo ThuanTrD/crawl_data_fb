@@ -1638,6 +1638,16 @@
     let CURRENT_SEARCH = '';
     let CURRENT_VIEW = 'cards';
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     // Init
     document.addEventListener("DOMContentLoaded", () => {
       refreshDashboard();
@@ -2109,9 +2119,9 @@ async function executeKeywordCrawl(e) {
 
     function updateFilterCounts() {
       document.getElementById("count-all").textContent = ALL_LEADS.length;
-      document.getElementById("count-hot").textContent = ALL_LEADS.filter(l => l.score >= 80 || l.tier === 'HOT').length;
-      document.getElementById("count-inbox").textContent = ALL_LEADS.filter(l => (l.intent && l.intent.includes('INBOX')) || (l.comment_text && l.comment_text.toLowerCase().includes('ib'))).length;
-      document.getElementById("count-pricing").textContent = ALL_LEADS.filter(l => (l.intent && l.intent.includes('PRICING')) || (l.comment_text && l.comment_text.toLowerCase().includes('giá'))).length;
+      document.getElementById("count-hot").textContent = ALL_LEADS.filter(l => (l.score || 0) >= 80 || l.tier === 'HOT').length;
+      document.getElementById("count-inbox").textContent = ALL_LEADS.filter(l => (l.intent && String(l.intent).includes('INBOX')) || (l.comment_text && String(l.comment_text).toLowerCase().includes('ib'))).length;
+      document.getElementById("count-pricing").textContent = ALL_LEADS.filter(l => (l.intent && String(l.intent).includes('PRICING')) || (l.comment_text && String(l.comment_text).toLowerCase().includes('giá'))).length;
       document.getElementById("count-phone").textContent = ALL_LEADS.filter(l => l.phone && l.phone !== '-').length;
     }
 
@@ -2483,28 +2493,32 @@ async function executeKeywordCrawl(e) {
     async function triggerQwenPitch(leadId, btnEl) {
       if (btnEl) {
         btnEl.disabled = true;
-        btnEl.textContent = "⏳ Đang gọi Qwen...";
+        btnEl.textContent = "⏳ Đang tạo...";
       }
-      showToast("Đang kết nối Qwen3-VL-30B & tra cứu Database Supabase...", "🤖");
+      showToast("Đang sinh kịch bản tư vấn AI & tra cứu Supabase KB...", "🤖");
       try {
         const res = await fetch(`/api/leads/${leadId}/pitch`, { method: "POST" });
         const json = await res.json();
-        if (json.success && json.pitch && json.pitch.messenger_pitch) {
+        const newPitch = json.pitch && json.pitch.messenger_pitch ? json.pitch.messenger_pitch : (json.messenger_pitch || null);
+        if (json.success && newPitch) {
           const cardPitchEl = document.getElementById(`pitch-text-${leadId}`);
           if (cardPitchEl) {
-            cardPitchEl.textContent = json.pitch.messenger_pitch;
+            cardPitchEl.textContent = newPitch;
           }
           const tblPitchEl = document.getElementById(`pitch-text-tbl-${leadId}`);
           if (tblPitchEl) {
-            tblPitchEl.textContent = json.pitch.messenger_pitch;
+            tblPitchEl.textContent = newPitch;
           }
           const leadObj = ALL_LEADS.find(l => l.id === leadId);
           if (leadObj) {
-            leadObj.messenger_pitch = json.pitch.messenger_pitch;
+            leadObj.messenger_pitch = newPitch;
+            if (json.pitch && json.pitch.telesale_script) {
+              leadObj.telesale_script = json.pitch.telesale_script;
+            }
           }
-          showToast("Qwen3-VL-30B đã tạo xong lời thoại chốt đơn!", "✅");
+          showToast("Đã tạo xong lời thoại chốt đơn thành công!", "✅");
         } else {
-          showToast(json.error || "Qwen đang xử lý chậm, vui lòng thử lại sau giây lát", "⚠️");
+          showToast(json.error || "Không thể tạo kịch bản, vui lòng thử lại sau", "⚠️");
         }
       } catch (err) {
         showToast("Lỗi khi kết nối với AI Agent", "❌");
@@ -2523,14 +2537,44 @@ async function executeKeywordCrawl(e) {
       renderLeads();
     }
 
+    function copyToClipboard(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+      } else {
+        return new Promise((resolve, reject) => {
+          const textArea = document.createElement("textarea");
+          textArea.value = text;
+          textArea.style.position = "fixed";
+          textArea.style.left = "-999999px";
+          textArea.style.top = "-999999px";
+          textArea.setAttribute("readonly", "");
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          try {
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            if (successful) resolve();
+            else reject(new Error('execCommand failed'));
+          } catch (err) {
+            document.body.removeChild(textArea);
+            reject(err);
+          }
+        });
+      }
+    }
+
     function copyPitch(leadId) {
       const lead = ALL_LEADS.find(l => l.id === leadId);
-      const text = lead && lead.messenger_pitch ? lead.messenger_pitch : "Xin chào! Bên em xin gửi báo giá phần mềm.";
-      
-      navigator.clipboard.writeText(text).then(() => {
+      let text = lead && lead.messenger_pitch ? lead.messenger_pitch.trim() : "";
+      if (!text || text.startsWith("Đang chờ AI Qwen") || text === "-") {
+        showToast("Chưa có lời thoại AI. Hãy bấm nút '🤖 Sinh Lời Thoại Qwen' trước!", "⚠️");
+        return;
+      }
+      copyToClipboard(text).then(() => {
         showToast("Đã copy kịch bản chat vào Clipboard!", "📋");
       }).catch(() => {
-        showToast("Lỗi khi copy kịch bản", "❌");
+        showToast("Không thể tự động copy, vui lòng copy thủ công", "❌");
       });
     }
 
@@ -2593,6 +2637,74 @@ async function executeKeywordCrawl(e) {
         body.style.display = "block";
         icon.textContent = "▲";
       }
+    }
+
+    async function openKnowledgeModal() {
+      const modal = document.getElementById("kb-modal");
+      modal.style.display = "flex";
+      const loading = document.getElementById("kb-content-loading");
+      const content = document.getElementById("kb-content");
+      const list = document.getElementById("kb-products-list");
+
+      loading.style.display = "block";
+      content.style.display = "none";
+
+      try {
+        const res = await fetch("/api/knowledge");
+        const json = await res.json();
+        loading.style.display = "none";
+        content.style.display = "block";
+
+        if (json.success && json.data && json.data.length > 0) {
+          list.innerHTML = json.data.map(p => {
+            const usps = (p.key_usps || []).map(u => `<li>${escapeHtml(u)}</li>`).join("");
+            const pricing = p.pricing_details || {};
+            const pricingHtml = Object.entries(pricing).map(([k, v]) => `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}</div>`).join("");
+            const objections = p.objection_scripts || {};
+            const objHtml = Object.entries(objections).map(([k, o]) => `
+              <div style="background:#1e293b; padding:10px; border-radius:6px; margin-top:8px;">
+                <div style="color:#fbbf24; font-weight:600; font-size:12px;">Khúc mắc: ${escapeHtml(o.concern || k)}</div>
+                <div style="color:#34d399; font-size:12px; margin-top:4px;">✨ Giải pháp DB: ${escapeHtml(o.selling_point || '-')}</div>
+                <div style="color:#94a3b8; font-size:11px; margin-top:2px;">👉 Hành động: ${escapeHtml(o.action || '-')}</div>
+              </div>
+            `).join("");
+
+            return `
+              <div style="background:rgba(255,255,255,0.03); border:1px solid #334155; border-radius:10px; padding:18px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                  <h4 style="margin:0; color:#38bdf8; font-size:16px;">${escapeHtml(p.product_name)}</h4>
+                  <span class="badge-tag" style="background:rgba(99,102,241,0.2); color:#818cf8;">Key: ${escapeHtml(p.product_key)}</span>
+                </div>
+                <p style="font-size:12px; color:var(--text-muted); margin:4px 0 12px;">Đơn vị: ${escapeHtml(p.vendor || '-')}</p>
+                
+                <div style="margin-bottom:12px;">
+                  <span style="font-size:12px; font-weight:600; color:#fff;">Ưu điểm vượt trội (USPs):</span>
+                  <ul style="margin:6px 0 0 18px; font-size:12.5px; color:#cbd5e1; line-height:1.6;">${usps || '<li>Chính hãng CIC</li>'}</ul>
+                </div>
+
+                <div style="margin-bottom:12px;">
+                  <span style="font-size:12px; font-weight:600; color:#fff;">Chính sách giá & bản quyền trong DB:</span>
+                  <div style="font-size:12px; color:#94a3b8; margin-top:4px; line-height:1.6;">${pricingHtml || 'Báo giá chính hãng ưu đãi từ CIC'}</div>
+                </div>
+
+                <div>
+                  <span style="font-size:12px; font-weight:600; color:#fff;">Kịch bản gỡ rối / xử lý từ chối (Objection Handling):</span>
+                  <div>${objHtml || '<div style="color:#94a3b8; font-size:12px; margin-top:4px;">Tư vấn giải pháp và báo giá theo quy chuẩn CIC</div>'}</div>
+                </div>
+              </div>
+            `;
+          }).join("");
+        } else {
+          list.innerHTML = `<p style="color:var(--text-muted);">Chưa có sản phẩm nào trong cơ sở dữ liệu.</p>`;
+        }
+      } catch (err) {
+        loading.innerHTML = `<p style="color:#f87171;">Lỗi tải dữ liệu: ${err.message}</p>`;
+      }
+    }
+
+    function closeKnowledgeModal() {
+      const modal = document.getElementById("kb-modal");
+      if (modal) modal.style.display = "none";
     }
   </script>
 

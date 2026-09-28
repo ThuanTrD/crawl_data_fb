@@ -343,8 +343,8 @@ def api_lead_pitch(lead_id):
                     "pitch": {
                         "messenger_pitch": qwen_res.get("messenger_pitch"),
                         "telesale_script": qwen_res.get("telesale_script"),
-                        "ai_agent": "Qwen3-VL-30B",
-                        "status": "GENERATED_BY_QWEN"
+                        "ai_agent": qwen_res.get("ai_agent", "Qwen3-VL-30B"),
+                        "status": "GENERATED"
                     }
                 })
             else:
