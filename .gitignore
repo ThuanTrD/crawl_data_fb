@@ -9,3 +9,12 @@ venv/
 .idea/
 .vscode/
 dashboard.log
+.bashrc
+.bash_logout
+.profile
+.cache/
+.ssh/
+.ssh-mcp/
+*.log
+*.bak
+n8n/data/
