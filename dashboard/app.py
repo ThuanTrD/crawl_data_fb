@@ -736,8 +736,8 @@ def api_keyword_crawl_selected():
     """Giai doan 2: Cao binh luan & thong tin khach hang tu cac bai viet nguoi dung da tich chon."""
     try:
         data = request.json or {}
-        selected_posts = data.get('posts', [])
-        keyword = data.get('keyword', 'enjicad').strip()
+        selected_posts = data.get('posts') or data.get('selected_posts') or []
+        keyword = (data.get('keyword') or 'enjicad').strip()
 
         if not selected_posts:
             return jsonify({'success': False, 'error': 'Vui lòng chọn ít nhất 1 bài viết để cào'}), 400
