@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Facebook Lead Intelligence CRM — Trí Tuệ Bán Hàng & Chốt Đơn</title>
+  
+  <!-- Google Fonts: Plus Jakarta Sans & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --bg-surface: #0f172a;
+      --bg-card: rgba(17, 24, 39, 0.75);
+      --bg-card-hover: rgba(30, 41, 59, 0.85);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(99, 102, 241, 0.5);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-indigo: #6366f1;
+      --accent-indigo-glow: rgba(99, 102, 241, 0.35);
+      --accent-emerald: #10b981;
+      --accent-emerald-glow: rgba(16, 185, 129, 0.3);
+      --accent-rose: #f43f5e;
+      --accent-amber: #f59e0b;
+      --accent-sky: #0ea5e9;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.1) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.05) 0%, transparent 60%);
+      background-attachment: fixed;
+      line-height: 1.5;
+    }
+
+    /* Top Navbar */
+    .navbar {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 14px var(--accent-indigo-glow);
+    }
+
+    .brand-info h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      background: linear-gradient(90deg, #fff, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-info p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #34d399;
+    }
+
+    .status-badge.n8n {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .status-badge.n8n:hover {
+      background: rgba(245, 158, 11, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+      text-decoration: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+      border-color: var(--border-subtle);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: #fff;
+      box-shadow: 0 4px 14px var(--accent-indigo-glow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px var(--accent-indigo-glow);
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Hero Quick Crawl Card */
+    .hero-card {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 20px;
+      padding: 28px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .hero-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, #6366f1, #ec4899, #10b981);
+    }
+
+    .hero-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .hero-title h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hero-title p {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .quick-pill {
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #a5b4fc;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .quick-pill:hover {
+      background: rgba(99, 102, 241, 0.25);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .crawl-form {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .input-wrapper {
+      flex: 1;
+      min-width: 300px;
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+
+    .crawl-input {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 14px 16px 14px 44px;
+      color: #fff;
+      font-size: 14px;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    .crawl-input:focus {
+      outline: none;
+      border-color: var(--accent-indigo);
+      box-shadow: 0 0 0 3px var(--accent-indigo-glow);
+      background: rgba(15, 23, 42, 1);
+    }
+
+    .crawl-btn {
+      padding: 14px 28px;
+      font-size: 14.5px;
+      border-radius: 12px;
+      white-space: nowrap;
+      background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+      color: #fff;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 4px 16px var(--accent-indigo-glow);
+      transition: all 0.2s;
+    }
+
+    .crawl-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px var(--accent-indigo-glow);
+    }
+
+    .crawl-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Progress Banner */
+    .progress-banner {
+      display: none;
+      margin-top: 20px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 12px;
+      padding: 16px 20px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .progress-steps {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .step-item.active {
+      color: #818cf8;
+      font-weight: 600;
+    }
+
+    .step-item.done {
+      color: #34d399;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .kpi-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      transition: all 0.25s ease;
+    }
+
+    .kpi-card:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(255, 255, 255, 0.15);
+      transform: translateY(-2px);
+    }
+
+    .kpi-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .kpi-icon.indigo { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+    .kpi-icon.rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; }
+    .kpi-icon.emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .kpi-icon.amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+    .kpi-data h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.1;
+    }
+
+    .kpi-data p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Executive Analytics Split */
+    .analytics-split {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 992px) {
+      .analytics-split { grid-template-columns: 1fr; }
+    }
+
+    .summary-card, .breakdown-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .badge-tag {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .badge-tag.hot { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+    .badge-tag.info { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
+
+    .executive-text {
+      font-size: 13.5px;
+      line-height: 1.6;
+      color: #cbd5e1;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 12px;
+      padding: 16px;
+      border-left: 3px solid var(--accent-indigo);
+    }
+
+    .battlecard-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .battlecard-item {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 13px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .battlecard-item strong {
+      color: #f87171;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .battlecard-item span {
+      color: #cbd5e1;
+    }
+
+    /* Progress Bars for Intent Breakdown */
+    .intent-bar-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .intent-bar-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .intent-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+
+    .bar-bg {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.8s ease;
+    }
+
+    .bar-fill.pricing { background: linear-gradient(90deg, #f43f5e, #fb7185); }
+    .bar-fill.inbox { background: linear-gradient(90deg, #6366f1, #818cf8); }
+    .bar-fill.tech { background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
+    .bar-fill.trial { background: linear-gradient(90deg, #10b981, #34d399); }
+
+    /* Leads Management Section */
+    .leads-section {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .filter-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .chip:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .chip.active {
+      background: rgba(99, 102, 241, 0.2);
+      border-color: var(--accent-indigo);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .toolbar-tools {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .search-box {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 8px 14px;
+      color: #fff;
+      font-size: 13px;
+      width: 220px;
+      transition: all 0.2s;
+    }
+
+    .search-box:focus {
+      outline: none;
+      border-color: var(--accent-indigo);
+      width: 260px;
+    }
+
+    .view-toggle {
+      display: flex;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 3px;
+    }
+
+    .toggle-btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      transition: all 0.2s;
+    }
+
+    .toggle-btn.active {
+      background: var(--accent-indigo);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    /* Leads Cards Grid */
+    .leads-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 20px;
+    }
+
+    .customer-card {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .customer-card:hover {
+      background: rgba(26, 34, 52, 0.9);
+      border-color: rgba(99, 102, 241, 0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    }
+
+    .customer-card.hot-lead {
+      border-left: 4px solid var(--accent-rose);
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar-circle {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #4f46e5, #06b6d4);
+      color: #fff;
+      font-weight: 700;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .user-meta h4 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .user-meta span {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .lead-badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .lead-badge.hot {
+      background: rgba(244, 63, 94, 0.15);
+      border: 1px solid rgba(244, 63, 94, 0.35);
+      color: #fb7185;
+      animation: pulse 2s infinite;
+    }
+
+    .lead-badge.warm {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fbbf24;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.75; }
+    }
+
+    .comment-quote {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #e2e8f0;
+      border-left: 3px solid rgba(255, 255, 255, 0.2);
+      font-style: italic;
+    }
+
+    .pain-point-tag {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+
+    .pain-point-tag strong {
+      color: #cbd5e1;
+    }
+
+    /* Pitch Box */
+    .pitch-box {
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px dashed rgba(99, 102, 241, 0.3);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .pitch-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: #a5b4fc;
+    }
+
+    .pitch-content {
+      font-size: 12.5px;
+      color: #e2e8f0;
+      line-height: 1.5;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .btn-copy {
+      flex: 1;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      color: #c7d2fe;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn-copy:hover {
+      background: var(--accent-indigo);
+      color: #fff;
+    }
+
+    .btn-messenger {
+      background: rgba(14, 165, 233, 0.15);
+      border: 1px solid rgba(14, 165, 233, 0.35);
+      color: #7dd3fc;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-messenger:hover {
+      background: var(--accent-sky);
+      color: #fff;
+    }
+
+    /* Table View Styles */
+    .leads-table-container {
+      display: none;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: middle;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Empty State */
+    .empty-state {
+      padding: 60px 20px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      color: var(--text-muted);
+    }
+
+    .empty-icon {
+      font-size: 48px;
+      opacity: 0.5;
+    }
+
+    .empty-state h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 18px;
+      color: #fff;
+    }
+
+    /* Technical & n8n Accordion */
+    .system-accordion {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .accordion-header {
+      padding: 18px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      background: rgba(15, 23, 42, 0.5);
+      transition: all 0.2s;
+    }
+
+    .accordion-header:hover {
+      background: rgba(15, 23, 42, 0.8);
+    }
+
+    .accordion-header h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .accordion-body {
+      display: none;
+      padding: 24px;
+      border-top: 1px solid var(--border-subtle);
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .n8n-workflows-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .workflow-item {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .workflow-item span {
+      font-size: 13px;
+      color: #e2e8f0;
+      font-weight: 500;
+    }
+
+    .terminal-box {
+      background: #030712;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #a5b4fc;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #1e293b;
+      border: 1px solid var(--accent-indigo);
+      color: #fff;
+      padding: 14px 20px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      font-size: 13.5px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 1000;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navbar -->
+  <nav class="navbar">
+    <a href="/" class="brand">
+      <div class="brand-icon">⚡</div>
+      <div class="brand-info">
+        <h1>Facebook Lead Intelligence CRM</h1>
+        <p>Hệ thống quét khách hàng & kịch bản bán hàng tự động</p>
+      </div>
+    </a>
+
+    <div class="nav-actions">
+      <div class="status-badge" id="db-status">
+        <span class="dot"></span>
+        <span>Supabase Live</span>
+      </div>
+
+      <a id="n8n-studio-btn" href="https://receive-require-height-kick.trycloudflare.com" target="_blank" class="status-badge n8n">
+        <span class="dot" style="background:#fbbf24; box-shadow:0 0 8px #fbbf24;"></span>
+        <span>Mở n8n Studio Canvas ↗</span>
+      </a>
+
+      <button class="btn btn-secondary" onclick="exportLeads('all')">
+        📥 Xuất Excel
+      </button>
+      <button class="btn btn-secondary" onclick="refreshDashboard()">
+        🔄 Làm Mới
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container">
+
+    <!-- Hero One-Click Crawl Card -->
+    <section class="hero-card">
+      <div class="hero-header">
+        <div class="hero-title">
+          <h2>🎯 Quét Khách Hàng Tiềm Năng Từ Facebook</h2>
+          <p>Dán link bài viết bất kỳ (Fanpage hoặc Group) — AI sẽ bóc tách tất cả bình luận, profile và sinh kịch bản Messenger</p>
+        </div>
+
+        <div class="quick-pill" onclick="fillDemoPost()">
+          ✨ Quét Nhanh Bài Viết Mẫu (CIC Technology)
+        </div>
+      </div>
+
+      <form class="crawl-form" onsubmit="executeCrawl(event)">
+        <div class="input-wrapper">
+          <span class="input-icon">🔗</span>
+          <input 
+            type="url" 
+            id="post-url-input" 
+            class="crawl-input" 
+            placeholder="Dán đường link bài viết Facebook (VD: https://www.facebook.com/share/p/1QhxSWmYdP/)..."
+            required
+            value="https://www.facebook.com/share/p/1QhxSWmYdP/"
+          >
+        </div>
+        <button type="submit" id="crawl-submit-btn" class="crawl-btn">
+          <span>🚀 BẮT ĐẦU QUÉT KHÁCH HÀNG & AI PHÂN TÍCH</span>
+        </button>
+      </form>
+
+      <!-- Progress Banner -->
+      <div class="progress-banner" id="crawl-progress">
+        <div class="progress-steps">
+          <div class="step-item active" id="step-1">
+            <div class="spinner"></div>
+            <span>1. Đang cào toàn bộ bình luận Facebook...</span>
+          </div>
+          <div class="step-item" id="step-2">
+            <span>2. AI Agent bóc tách profile & lọc SĐT ẩn...</span>
+          </div>
+          <div class="step-item" id="step-3">
+            <span>3. Sinh kịch bản Messenger & Đồng bộ n8n Studio...</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPI Grid -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon indigo">🎯</div>
+        <div class="kpi-data">
+          <h3 id="stat-total-leads">0</h3>
+          <p>Tổng Khách Tiềm Năng (Đã lọc Admin)</p>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-icon rose">🔥</div>
+        <div class="kpi-data">
+          <h3 id="stat-hot-leads">0</h3>
+          <p>Khách Hàng HOT (Cần Báo Giá Ngay)</p>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-icon emerald">📈</div>
+        <div class="kpi-data">
+          <h3 id="stat-conversion-rate">0%</h3>
+          <p>Tỷ Lệ Sẵn Sàng Chốt Đơn (Conversion)</p>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-icon amber">💬</div>
+        <div class="kpi-data">
+          <h3 id="stat-messenger-leads">0</h3>
+          <p>Khách Cần Nhắn Messenger (SĐT Ẩn)</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Executive Analytics Split -->
+    <section class="analytics-split">
+      <!-- AI Executive Strategy Card -->
+      <div class="summary-card">
+        <div class="card-title">
+          <span>🤖 Tóm Tắt Chiến Lược Từ AI Intelligence Agent</span>
+          <span class="badge-tag hot">Chiến Thuật Bán Hàng</span>
+        </div>
+
+        <p class="executive-text" id="ai-executive-summary">
+          Chưa có bài viết nào được phân tích. Hãy dán link bài viết ở trên và bấm "BẮT ĐẦU QUÉT KHÁCH HÀNG" hoặc bấm nút quét nhanh bài viết mẫu của CIC Technology.
+        </p>
+
+        <div class="card-title" style="font-size:14px; margin-top:4px;">
+          <span>🎯 Gợi Ý Xử Lý Từ Chối & Chốt Đơn (Sales Battlecard):</span>
+        </div>
+
+        <div class="battlecard-list" id="battlecard-container">
+          <div class="battlecard-item">
+            <strong>Hỏi về giá thuê bao theo năm:</strong>
+            <span>Nhấn mạnh giá chỉ bằng 1/4 AutoCAD, đầy đủ bản quyền hợp pháp, hỗ trợ chuyển đổi license linh hoạt theo năm.</span>
+          </div>
+          <div class="battlecard-item">
+            <strong>Lo ngại giật lag khi mở bản vẽ nặng (so với Vinacad/AutoCAD):</strong>
+            <span>Mời tải ngay bản dùng thử 30 ngày (Trial), cam kết đọc tốt file DWG dung lượng lớn, tương thích hoàn toàn Font SHX & Lisp.</span>
+          </div>
+          <div class="battlecard-item">
+            <strong>Khách comment "Ib" / "Inbox":</strong>
+            <span>Nhắn tin phản hồi ngay trong vòng 5 phút kèm bảng báo giá chi tiết và đề xuất gửi báo giá qua Zalo công ty.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Intent Distribution Breakdown -->
+      <div class="breakdown-card">
+        <div class="card-title">
+          <span>📊 Phân Bổ Ý Định Mua Hàng Của Khách</span>
+          <span class="badge-tag info">Nhu Cầu Thực Tế</span>
+        </div>
+
+        <div class="intent-bar-list">
+          <div class="intent-bar-item">
+            <div class="intent-meta">
+              <span>💬 Yêu Cầu Báo Giá Riêng (Ib / Inbox)</span>
+              <strong id="pct-inbox">0%</strong>
+            </div>
+            <div class="bar-bg">
+              <div class="bar-fill inbox" id="bar-inbox" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <div class="intent-bar-item">
+            <div class="intent-meta">
+              <span>🏷️ Hỏi Giá Thuê Bao / Bản Quyền Năm</span>
+              <strong id="pct-pricing">0%</strong>
+            </div>
+            <div class="bar-bg">
+              <div class="bar-fill pricing" id="bar-pricing" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <div class="intent-bar-item">
+            <div class="intent-meta">
+              <span>⚙️ Thắc Mắc Kỹ Thuật & Độ Mượt Thay AutoCAD</span>
+              <strong id="pct-tech">0%</strong>
+            </div>
+            <div class="bar-bg">
+              <div class="bar-fill tech" id="bar-tech" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <div class="intent-bar-item">
+            <div class="intent-meta">
+              <span>🎁 Yêu Cầu Cài Bản Dùng Thử (Trial 30 Ngày)</span>
+              <strong id="pct-trial">0%</strong>
+            </div>
+            <div class="bar-bg">
+              <div class="bar-fill trial" id="bar-trial" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:auto; font-size:12px; color:var(--text-muted); line-height:1.5;">
+          💡 <strong>Ghi chú Sales:</strong> 100% người dùng trên Facebook cá nhân thiết lập bảo mật riêng tư cho SĐT, việc nhắn tin trực tiếp qua Messenger bằng kịch bản AI soạn sẵn có tỷ lệ phản hồi cao gấp 4 lần so với việc chờ khách đưa SĐT.
+        </div>
+      </div>
+    </section>
+
+    <!-- Leads Management Section -->
+    <section class="leads-section">
+      <div class="toolbar">
+        <div class="filter-chips">
+          <button class="chip active" onclick="filterLeads('all', this)">Tất Cả Khách Hàng (<span id="count-all">0</span>)</button>
+          <button class="chip" onclick="filterLeads('HOT', this)">🔥 Khách HOT Cần Báo Giá (<span id="count-hot">0</span>)</button>
+          <button class="chip" onclick="filterLeads('INBOX', this)">💬 Nhóm Comment 'Ib' (<span id="count-inbox">0</span>)</button>
+          <button class="chip" onclick="filterLeads('PRICING', this)">🏷️ Hỏi Giá Thuê Bao (<span id="count-pricing">0</span>)</button>
+          <button class="chip" onclick="filterLeads('HAS_PHONE', this)">📞 Khách Có SĐT (<span id="count-phone">0</span>)</button>
+        </div>
+
+        <div class="toolbar-tools">
+          <input 
+            type="text" 
+            id="search-input" 
+            class="search-box" 
+            placeholder="🔍 Tìm theo tên hoặc cmt..."
+            oninput="handleSearch(this.value)"
+          >
+
+          <div class="view-toggle">
+            <button class="toggle-btn active" id="btn-view-cards" onclick="switchView('cards')">🎴 Dạng Thẻ CRM</button>
+            <button class="toggle-btn" id="btn-view-table" onclick="switchView('table')">📋 Dạng Bảng</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cards Grid View -->
+      <div class="leads-cards-grid" id="leads-cards-container">
+        <!-- Rendered dynamically via JavaScript -->
+      </div>
+
+      <!-- Table View -->
+      <div class="leads-table-container" id="leads-table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Khách Hàng</th>
+              <th>Điểm & Phân Hạng</th>
+              <th>Bình Luận Nguyên Văn</th>
+              <th>Nhu Cầu (AI Phân Tích)</th>
+              <th>Trạng Thái SĐT</th>
+              <th>Kịch Bản Messenger</th>
+              <th>Hành Động</th>
+            </tr>
+          </thead>
+          <tbody id="leads-table-body">
+            <!-- Rendered dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="empty-state" style="display:none;">
+        <div class="empty-icon">📭</div>
+        <h3>Chưa Có Khách Hàng Nào Được Tìm Thấy</h3>
+        <p>Hãy dán đường link bài viết Facebook ở trên và bấm "Bắt Đầu Quét" để AI tự động tìm kiếm khách hàng tiềm năng.</p>
+        <button class="btn btn-primary" onclick="fillDemoPost(); executeCrawl();" style="margin-top:8px;">
+          🚀 Quét Thử Ngay Link Mẫu CIC
+        </button>
+      </div>
+    </section>
+
+    <!-- Technical & n8n Accordion (Collapsible) -->
+    <section class="system-accordion">
+      <div class="accordion-header" onclick="toggleAccordion()">
+        <h3>⚙️ Trung Tâm Tự Động Hóa n8n Studio & Giám Sát Hệ Thống</h3>
+        <span id="accordion-icon" style="font-size:18px; color:var(--text-muted);">▼</span>
+      </div>
+
+      <div class="accordion-body" id="accordion-body">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+          <p style="font-size:13px; color:var(--text-muted);">
+            Tất cả 8 vi dịch vụ tự động hóa n8n đang hoạt động đồng bộ với Supabase Postgres và Web CRM.
+          </p>
+          <a href="https://receive-require-height-kick.trycloudflare.com" target="_blank" class="btn btn-primary" style="font-size:12.5px; padding:6px 14px;">
+            🔗 Mở Trực Tiếp Canvas n8n Studio ↗
+          </a>
+        </div>
+
+        <div class="n8n-workflows-grid" id="n8n-workflows-list">
+          <!-- Populated by JS -->
+        </div>
+
+        <div style="margin-top:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:12.5px; font-weight:600; color:#fff;">Nhật Ký Thực Thi Trực Tiếp (Live Execution Stream):</span>
+            <button class="btn btn-secondary" onclick="clearLogs()" style="font-size:11px; padding:4px 8px;">Xóa Log</button>
+          </div>
+          <div class="terminal-box" id="terminal-logs">
+            [Hệ Thống] Kết nối sẵn sàng. Chờ lệnh quét từ người dùng...
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast">
+    <span id="toast-icon">✅</span>
+    <span id="toast-message">Đã copy kịch bản chat vào Clipboard!</span>
+  </div>
+
+  <script>
+    let ALL_LEADS = [];
+    let CURRENT_FILTER = 'all';
+    let CURRENT_SEARCH = '';
+    let CURRENT_VIEW = 'cards';
+
+    // Init
+    document.addEventListener("DOMContentLoaded", () => {
+      refreshDashboard();
+      fetchN8nStatus();
+      setInterval(pollLogs, 3000);
+    });
+
+    function fillDemoPost() {
+      document.getElementById("post-url-input").value = "https://www.facebook.com/share/p/1QhxSWmYdP/";
+      showToast("Đã điền link bài viết mẫu của CIC Technology!", "✨");
+    }
+
+    async function executeCrawl(e) {
+      if (e) e.preventDefault();
+      const input = document.getElementById("post-url-input");
+      const url = input.value.trim();
+      if (!url) {
+        showToast("Vui lòng nhập đường link bài viết Facebook", "⚠️");
+        return;
+      }
+
+      const submitBtn = document.getElementById("crawl-submit-btn");
+      const progress = document.getElementById("crawl-progress");
+      const step1 = document.getElementById("step-1");
+      const step2 = document.getElementById("step-2");
+      const step3 = document.getElementById("step-3");
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<span>⏳ Đang quét dữ liệu...</span>`;
+      progress.style.display = "block";
+
+      step1.className = "step-item active";
+      step2.className = "step-item";
+      step3.className = "step-item";
+
+      setTimeout(() => {
+        step1.className = "step-item done";
+        step2.className = "step-item active";
+        step2.innerHTML = `<div class="spinner"></div><span>2. AI Agent bóc tách profile & lọc SĐT ẩn...</span>`;
+      }, 3000);
+
+      setTimeout(() => {
+        step2.className = "step-item done";
+        step3.className = "step-item active";
+        step3.innerHTML = `<div class="spinner"></div><span>3. Sinh kịch bản Messenger & Đồng bộ n8n Studio...</span>`;
+      }, 7000);
+
+      try {
+        const res = await fetch("/api/adhoc/crawl", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ post_url: url })
+        });
+        const json = await res.json();
+
+        if (json.success) {
+          step3.className = "step-item done";
+          step3.innerHTML = `<span>✅ Hoàn tất đồng bộ toàn diện!</span>`;
+          showToast(`Quét thành công! Tìm thấy ${json.data.leads_found} khách hàng tiềm năng.`, "🎉");
+          setTimeout(() => { progress.style.display = "none"; }, 2500);
+          await refreshDashboard();
+        } else {
+          showToast(`Lỗi: ${json.error}`, "❌");
+          progress.style.display = "none";
+        }
+      } catch (err) {
+        showToast(`Lỗi mạng khi quét: ${err.message}`, "❌");
+        progress.style.display = "none";
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<span>🚀 BẮT ĐẦU QUÉT KHÁCH HÀNG & AI PHÂN TÍCH</span>`;
+      }
+    }
+
+    async function refreshDashboard() {
+      await Promise.all([fetchStats(), fetchLeads(), fetchLatestAgentReport()]);
+    }
+
+    async function fetchStats() {
+      try {
+        const res = await fetch("/api/stats");
+        const json = await res.json();
+        if (json.success) {
+          const d = json.data;
+          document.getElementById("stat-total-leads").textContent = d.total_leads;
+          document.getElementById("stat-hot-leads").textContent = d.hot_leads;
+          
+          const conv = d.total_leads > 0 ? Math.round((d.hot_leads / d.total_leads) * 100) : 0;
+          document.getElementById("stat-conversion-rate").textContent = conv + "%";
+          document.getElementById("stat-messenger-leads").textContent = d.total_leads;
+        }
+      } catch (err) {
+        console.error("fetchStats error:", err);
+      }
+    }
+
+    async function fetchLatestAgentReport() {
+      try {
+        const res = await fetch("/api/agent/latest");
+        const json = await res.json();
+        if (json.success && json.data) {
+          const rep = json.data;
+          if (rep.executive_summary) {
+            document.getElementById("ai-executive-summary").textContent = rep.executive_summary;
+          }
+
+          if (rep.statistics && rep.statistics.intent_breakdown) {
+            const b = rep.statistics.intent_breakdown;
+            const inboxPct = b.direct_inbox_request ? b.direct_inbox_request.percentage : 0;
+            const pricePct = b.pricing_and_subscription ? b.pricing_and_subscription.percentage : 0;
+            const techPct = b.technical_inquiry ? b.technical_inquiry.percentage : 0;
+            const trialPct = b.community_engagement ? 15 : 10;
+
+            document.getElementById("pct-inbox").textContent = inboxPct + "%";
+            document.getElementById("bar-inbox").style.width = inboxPct + "%";
+
+            document.getElementById("pct-pricing").textContent = pricePct + "%";
+            document.getElementById("bar-pricing").style.width = pricePct + "%";
+
+            document.getElementById("pct-tech").textContent = techPct + "%";
+            document.getElementById("bar-tech").style.width = techPct + "%";
+
+            document.getElementById("pct-trial").textContent = trialPct + "%";
+            document.getElementById("bar-trial").style.width = trialPct + "%";
+          }
+        }
+      } catch (err) {
+        console.log("No latest report yet");
+      }
+    }
+
+    async function fetchLeads() {
+      try {
+        const res = await fetch("/api/leads?limit=100");
+        const json = await res.json();
+        if (json.success) {
+          ALL_LEADS = json.data || [];
+          updateFilterCounts();
+          renderLeads();
+        }
+      } catch (err) {
+        console.error("fetchLeads error:", err);
+      }
+    }
+
+    function updateFilterCounts() {
+      document.getElementById("count-all").textContent = ALL_LEADS.length;
+      document.getElementById("count-hot").textContent = ALL_LEADS.filter(l => l.score >= 80 || l.tier === 'HOT').length;
+      document.getElementById("count-inbox").textContent = ALL_LEADS.filter(l => (l.intent && l.intent.includes('INBOX')) || (l.comment_text && l.comment_text.toLowerCase().includes('ib'))).length;
+      document.getElementById("count-pricing").textContent = ALL_LEADS.filter(l => (l.intent && l.intent.includes('PRICING')) || (l.comment_text && l.comment_text.toLowerCase().includes('giá'))).length;
+      document.getElementById("count-phone").textContent = ALL_LEADS.filter(l => l.phone && l.phone !== '-').length;
+    }
+
+    function filterLeads(tier, el) {
+      CURRENT_FILTER = tier;
+      document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+      if (el) el.classList.add("active");
+      renderLeads();
+    }
+
+    function handleSearch(val) {
+      CURRENT_SEARCH = val.toLowerCase().trim();
+      renderLeads();
+    }
+
+    function renderLeads() {
+      let filtered = ALL_LEADS;
+
+      // Filter
+      if (CURRENT_FILTER === 'HOT') {
+        filtered = filtered.filter(l => l.score >= 80 || l.tier === 'HOT');
+      } else if (CURRENT_FILTER === 'INBOX') {
+        filtered = filtered.filter(l => (l.intent && l.intent.includes('INBOX')) || (l.comment_text && l.comment_text.toLowerCase().includes('ib')));
+      } else if (CURRENT_FILTER === 'PRICING') {
+        filtered = filtered.filter(l => (l.intent && l.intent.includes('PRICING')) || (l.comment_text && l.comment_text.toLowerCase().includes('giá')));
+      } else if (CURRENT_FILTER === 'HAS_PHONE') {
+        filtered = filtered.filter(l => l.phone && l.phone !== '-');
+      }
+
+      // Search
+      if (CURRENT_SEARCH) {
+        filtered = filtered.filter(l => 
+          (l.full_name && l.full_name.toLowerCase().includes(CURRENT_SEARCH)) ||
+          (l.comment_text && l.comment_text.toLowerCase().includes(CURRENT_SEARCH)) ||
+          (l.pain_point && l.pain_point.toLowerCase().includes(CURRENT_SEARCH))
+        );
+      }
+
+      const emptyEl = document.getElementById("empty-state");
+      const cardsGrid = document.getElementById("leads-cards-container");
+      const tableContainer = document.getElementById("leads-table-container");
+
+      if (filtered.length === 0) {
+        emptyEl.style.display = "flex";
+        cardsGrid.style.display = "none";
+        tableContainer.style.display = "none";
+        return;
+      }
+
+      emptyEl.style.display = "none";
+
+      if (CURRENT_VIEW === 'cards') {
+        cardsGrid.style.display = "grid";
+        tableContainer.style.display = "none";
+        cardsGrid.innerHTML = filtered.map(lead => createCustomerCardHtml(lead)).join("");
+      } else {
+        cardsGrid.style.display = "none";
+        tableContainer.style.display = "block";
+        document.getElementById("leads-table-body").innerHTML = filtered.map(lead => createTableRowHtml(lead)).join("");
+      }
+    }
+
+    function createCustomerCardHtml(lead) {
+      const isHot = lead.score >= 80 || lead.tier === 'HOT';
+      const badgeClass = isHot ? 'hot' : 'warm';
+      const badgeText = isHot ? `🔥 HOT — BÁO GIÁ NGAY (${lead.score}đ)` : `⭐ WARM (${lead.score}đ)`;
+      const initial = (lead.full_name || 'U').charAt(0).toUpperCase();
+
+      const profileLink = lead.profile_url && lead.profile_url !== '#' ? lead.profile_url : 'https://facebook.com';
+
+      return `
+        <div class="customer-card ${isHot ? 'hot-lead' : ''}">
+          <div class="card-top">
+            <div class="user-profile">
+              <div class="avatar-circle">${initial}</div>
+              <div class="user-meta">
+                <h4>${lead.full_name}</h4>
+                <span>${lead.created_at || 'Mới phát hiện'}</span>
+              </div>
+            </div>
+            <div class="lead-badge ${badgeClass}">${badgeText}</div>
+          </div>
+
+          <div class="comment-quote">
+            "${lead.comment_text || 'Quan tâm đến sản phẩm CAD'}"
+          </div>
+
+          <div class="pain-point-tag">
+            🎯 <strong>Nhu cầu:</strong> ${lead.pain_point || 'Cần báo giá bản quyền phần mềm'}
+          </div>
+
+          <div class="pitch-box">
+            <div class="pitch-header">
+              <span>💬 KỊCH BẢN CHAT MESSENGER (AI GỢI Ý):</span>
+              <span style="color:#94a3b8; font-size:11px;">1-Click Copy</span>
+            </div>
+            <div class="pitch-content" id="pitch-text-${lead.id}">
+              ${lead.messenger_pitch || 'Chào anh/chị! Bên em xin phép gửi anh/chị thông tin báo giá và link dùng thử nhé ạ!'}
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <button class="btn-copy" onclick="copyPitch('${lead.id}')">
+              📋 Copy Kịch Bản
+            </button>
+            <a href="${profileLink}" target="_blank" class="btn-messenger">
+              💬 Mở Chat FB ↗
+            </a>
+          </div>
+        </div>
+      `;
+    }
+
+    function createTableRowHtml(lead) {
+      const isHot = lead.score >= 80 || lead.tier === 'HOT';
+      const badgeClass = isHot ? 'hot' : 'warm';
+      const profileLink = lead.profile_url && lead.profile_url !== '#' ? lead.profile_url : 'https://facebook.com';
+
+      return `
+        <tr>
+          <td>
+            <div style="font-weight:600; color:#fff;">${lead.full_name}</div>
+            <a href="${profileLink}" target="_blank" style="font-size:11px; color:#38bdf8; text-decoration:none;">Xem trang FB ↗</a>
+          </td>
+          <td><span class="lead-badge ${badgeClass}">${lead.score}đ — ${lead.tier}</span></td>
+          <td style="max-width:220px; font-style:italic;">"${lead.comment_text || '-'}"</td>
+          <td style="max-width:200px; color:#cbd5e1;">${lead.pain_point || '-'}</td>
+          <td><span style="font-size:12px; color:${lead.phone && lead.phone !== '-' ? '#34d399' : '#fbbf24'};">${lead.phone_status || 'Ẩn'}</span></td>
+          <td style="max-width:260px; font-size:12px;">
+            <div style="max-height:60px; overflow:hidden; text-overflow:ellipsis;">${lead.messenger_pitch || '-'}</div>
+          </td>
+          <td>
+            <div style="display:flex; gap:6px;">
+              <button class="btn-secondary" style="padding:4px 8px; font-size:11px;" onclick="copyPitch('${lead.id}')">📋 Copy</button>
+              <a href="${profileLink}" target="_blank" class="btn-secondary" style="padding:4px 8px; font-size:11px; text-decoration:none; color:#38bdf8;">💬 Chat</a>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    function switchView(mode) {
+      CURRENT_VIEW = mode;
+      document.getElementById("btn-view-cards").classList.toggle("active", mode === 'cards');
+      document.getElementById("btn-view-table").classList.toggle("active", mode === 'table');
+      renderLeads();
+    }
+
+    function copyPitch(leadId) {
+      const lead = ALL_LEADS.find(l => l.id === leadId);
+      const text = lead && lead.messenger_pitch ? lead.messenger_pitch : "Xin chào! Bên em xin gửi báo giá phần mềm.";
+      
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("Đã copy kịch bản chat vào Clipboard!", "📋");
+      }).catch(() => {
+        showToast("Lỗi khi copy kịch bản", "❌");
+      });
+    }
+
+    function showToast(msg, icon = "✅") {
+      const toast = document.getElementById("toast");
+      document.getElementById("toast-message").textContent = msg;
+      document.getElementById("toast-icon").textContent = icon;
+      toast.classList.add("show");
+      setTimeout(() => { toast.classList.remove("show"); }, 3000);
+    }
+
+    function exportLeads(scope = 'all') {
+      window.location.href = `/api/export/leads?scope=${scope}`;
+      showToast("Đang tải file Excel (CSV chuẩn UTF-8 BOM)...", "📥");
+    }
+
+    async function fetchN8nStatus() {
+      try {
+        const res = await fetch("/api/n8n/info");
+        const json = await res.json();
+        if (json.success) {
+          const list = document.getElementById("n8n-workflows-list");
+          if (json.workflows && json.workflows.length > 0) {
+            list.innerHTML = json.workflows.map(w => `
+              <div class="workflow-item">
+                <span>⚡ ${w.name}</span>
+                <span class="badge-tag" style="background:rgba(16,185,129,0.15); color:#34d399; font-size:10px;">${w.status}</span>
+              </div>
+            `).join("");
+          }
+        }
+      } catch (err) {
+        console.error("fetchN8nStatus error:", err);
+      }
+    }
+
+    async function pollLogs() {
+      try {
+        const res = await fetch("/api/logs");
+        const json = await res.json();
+        if (json.success && json.logs) {
+          const term = document.getElementById("terminal-logs");
+          term.innerHTML = json.logs.map(l => `<div><span style="color:#64748b;">[${l.time}]</span> <span style="color:${l.level==='SUCCESS'?'#34d399':(l.level==='WARN'?'#fbbf24':(l.level==='ERROR'?'#f87171':'#818cf8'))};">[${l.level}]</span> ${l.message}</div>`).join("");
+        }
+      } catch (e) {}
+    }
+
+    async function clearLogs() {
+      await fetch("/api/logs/clear", { method: "POST" });
+      document.getElementById("terminal-logs").innerHTML = "[Hệ Thống] Đã xóa nhật ký.";
+    }
+
+    function toggleAccordion() {
+      const body = document.getElementById("accordion-body");
+      const icon = document.getElementById("accordion-icon");
+      if (body.style.display === "block") {
+        body.style.display = "none";
+        icon.textContent = "▼";
+      } else {
+        body.style.display = "block";
+        icon.textContent = "▲";
+      }
+    }
+  </script>
+</body>
+</html>

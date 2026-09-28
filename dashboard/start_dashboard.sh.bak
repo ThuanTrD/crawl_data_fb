@@ -1,0 +1,28 @@
+#!/bin/bash
+pkill -f 'app.py' || true
+pkill -f 'cloudflared tunnel' || true
+sleep 1
+
+export PYTHONPATH=/home/ADMIN:$PYTHONPATH
+export DATABASE_URL='postgresql://postgres.qllwfecwujzhuwexrlqi:tRpWn0s3s8OxILhQ@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres'
+
+PORT=5678
+cd /home/ADMIN/dashboard
+PORT=5678 nohup /usr/bin/python3 app.py > /home/ADMIN/dashboard/dashboard.log 2>&1 &
+DASHBOARD_PID=$!
+echo "Dashboard PID: $DASHBOARD_PID"
+sleep 2
+
+# Check if dashboard is responding locally
+STATUS_CHECK=$(curl -s http://127.0.0.1:5678/api/stats | grep -o '"success":true' || echo "FAILED")
+echo "API Stats Check: $STATUS_CHECK"
+
+# Start cloudflared tunnel for n8n studio (port 5679)
+nohup /usr/local/bin/cloudflared tunnel --url http://127.0.0.1:5679 > /home/ADMIN/dashboard/n8n_tunnel.log 2>&1 &
+TUNNEL_PID=$!
+echo "n8n Tunnel PID: $TUNNEL_PID"
+sleep 4
+
+# Extract tunnel URL
+echo "Public n8n Cloudflare Tunnel URL:"
+grep -o 'https://[-a-zA-Z0-9@:%._\+~#=]\+\.trycloudflare\.com' /home/ADMIN/dashboard/n8n_tunnel.log | tail -n 1

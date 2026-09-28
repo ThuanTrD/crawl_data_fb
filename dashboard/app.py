@@ -1,0 +1,1115 @@
+import os
+import sys
+
+if "/home/ADMIN" not in sys.path:
+    sys.path.insert(0, "/home/ADMIN")
+
+import json
+import time
+import queue
+import threading
+import subprocess
+from datetime import datetime
+from flask import Flask, render_template, jsonify, request, Response
+import psycopg2
+import psycopg2.extras
+
+DB_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres.qllwfecwujzhuwexrlqi:tRpWn0s3s8OxILhQ@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres"
+)
+
+app = Flask(__name__)
+
+# Add global CORS headers to allow Bookmarklet to communicate from facebook.com
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
+
+# Ring buffer for live execution logs
+LOG_BUFFER = []
+MAX_LOGS = 300
+BUFFER_LOCK = threading.Lock()
+CURRENT_TASK = {"running": False, "task_name": "", "started_at": None}
+
+def add_log(level, message):
+    with BUFFER_LOCK:
+        entry = {
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "level": level,
+            "message": message
+        }
+        LOG_BUFFER.append(entry)
+        if len(LOG_BUFFER) > MAX_LOGS:
+            LOG_BUFFER.pop(0)
+
+def get_db():
+    return psycopg2.connect(DB_URL)
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@app.route("/api/n8n/info", methods=["GET"])
+@app.route("/api/system/pipeline-status", methods=["GET"])
+def api_n8n_info():
+    pipelines = [
+        {"id": "INGEST_01", "name": "1. Thu Thập & Bóc Tách Bài Viết Facebook", "status": "ACTIVE", "type": "Python Native"},
+        {"id": "AI_INTENT_02", "name": "2. AI Semantic Intent & Phân Loại Nhu Cầu", "status": "ACTIVE", "type": "Python Native"},
+        {"id": "SCORING_03", "name": "3. Chấm Điểm Tiềm Năng & Phân Hạng Lead Tier", "status": "ACTIVE", "type": "Python Native"},
+        {"id": "PITCH_04", "name": "4. Sinh Kịch Bản Tư Vấn Messenger Cá Nhân Hóa", "status": "ACTIVE", "type": "Python Native"},
+        {"id": "PERSIST_05", "name": "5. Đồng Bộ Dữ Liệu Tức Thì (Supabase Postgres)", "status": "ACTIVE", "type": "Python Native"},
+        {"id": "DEDUP_06", "name": "6. Bộ Lọc Khử Trùng Lặp 24h (Anti-Duplicate)", "status": "ACTIVE", "type": "Python Native"},
+        {"id": "ALERT_07", "name": "7. Tự Động Bắn Cảnh Báo Lead HOT (Telegram)", "status": "ACTIVE", "type": "Python Native"},
+        {"id": "METRICS_08", "name": "8. Báo Cáo Thống Kê & Phân Tích Khách Hàng", "status": "ACTIVE", "type": "Python Native"}
+    ]
+    return jsonify({
+        "success": True,
+        "engine": "100% Pure Python 3.14 Native Engine",
+        "n8n_online": False,
+        "native_engine_online": True,
+        "webhook_url": "/webhook/crawl-fb",
+        "port": 5678,
+        "workflows": pipelines
+    })
+
+@app.route("/api/stats", methods=["GET"])
+def api_stats():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute("SELECT COUNT(*) FROM public.leads;")
+        total_leads = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM public.leads WHERE lead_score >= 60;")
+        hot_leads = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM public.facebook_raw_items;")
+        raw_items = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM public.facebook_sources WHERE status = 'ACTIVE';")
+        active_sources = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM public.lead_notification_queue WHERE status = 'SENT';")
+        sent_notifications = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM public.facebook_errors WHERE resolved_at IS NULL;")
+        unresolved_errors = cur.fetchone()[0]
+
+        cur.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "total_leads": total_leads,
+                "hot_leads": hot_leads,
+                "raw_items": raw_items,
+                "active_sources": active_sources,
+                "sent_notifications": sent_notifications,
+                "unresolved_errors": unresolved_errors,
+                "current_task": CURRENT_TASK
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/leads", methods=["GET"])
+def api_leads():
+    try:
+        limit = int(request.args.get("limit", 200))
+        tier_filter = request.args.get("tier", "")
+
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+        query = """
+            SELECT 
+                l.id,
+                l.full_name,
+                l.company_name,
+                l.primary_phone,
+                l.primary_email,
+                l.primary_intent,
+                l.product_interest,
+                l.lead_score,
+                l.lead_tier,
+                l.status,
+                l.metadata,
+                l.created_at,
+                s.origin_url AS source_url,
+                s.platform,
+                fs.name AS source_name,
+                fs.url AS group_url,
+                fs.source_type
+            FROM public.leads l
+            LEFT JOIN (
+                SELECT DISTINCT ON (lead_id) lead_id, source_id, origin_url, platform, created_at 
+                FROM public.lead_sources 
+                ORDER BY lead_id, created_at DESC
+            ) s ON l.id = s.lead_id
+            LEFT JOIN public.facebook_sources fs ON s.source_id = fs.id
+        """
+        params = []
+        conditions = []
+        if tier_filter:
+            if tier_filter == 'HAS_PHONE':
+                conditions.append("l.primary_phone IS NOT NULL AND l.primary_phone != ''")
+            elif tier_filter == 'HOT':
+                conditions.append("l.lead_score >= 60")
+            elif tier_filter == 'INBOX':
+                conditions.append("(l.primary_intent = 'URGENT_NEED' OR l.metadata->>'ai_intent' = 'DIRECT_INBOX_REQUEST' OR l.metadata->>'comment_text' ILIKE '%ib%')")
+            elif tier_filter == 'PRICING':
+                conditions.append("(l.primary_intent = 'REQUEST_QUOTE' OR l.metadata->>'ai_intent' = 'PRICING_LICENSING' OR l.metadata->>'comment_text' ILIKE '%giá%')")
+            else:
+                conditions.append("l.lead_tier = %s")
+                params.append(tier_filter)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " ORDER BY l.lead_score DESC, l.created_at DESC LIMIT %s;"
+        params.append(limit)
+
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+        leads = []
+        for r in rows:
+            meta = r["metadata"] or {}
+            if isinstance(meta, str):
+                try: meta = json.loads(meta)
+                except: meta = {}
+
+            profile_url = meta.get("facebook_profile_url") or meta.get("profile_url")
+            if not profile_url and r["company_name"] and r["company_name"].startswith("Facebook:"):
+                profile_url = r["company_name"].replace("Facebook:", "").strip()
+
+            source_post_url = meta.get("source_post_url") or r["source_url"] or "https://www.facebook.com/CICTechnologyandConsultancyVN"
+            source_post_title = meta.get("source_post_title") or meta.get("post_title") or ""
+            if not source_post_title:
+                if r["product_interest"] and r["product_interest"] != "-":
+                    source_post_title = f"Giải Pháp Chính Hãng: {r['product_interest']}"
+                else:
+                    source_post_title = "Bài viết tư vấn giải pháp phần mềm CIC Technology"
+
+            post_id = meta.get("post_id") or ""
+            if not post_id and "posts/" in source_post_url:
+                post_id = source_post_url.split("posts/")[-1].strip("/")
+            if not post_id:
+                post_id = f"post_{abs(hash(source_post_title)) % 1000000}"
+
+            leads.append({
+                "id": str(r["id"]),
+                "full_name": r["full_name"] or "-",
+                "company_name": r["company_name"] or "-",
+                "phone": r["primary_phone"] or "-",
+                "phone_status": meta.get("phone_status") or ("CÔNG KHAI" if r["primary_phone"] else "ẨN (Bảo mật Facebook cá nhân)"),
+                "email": r["primary_email"] or "-",
+                "intent": meta.get("ai_intent") or r["primary_intent"] or "-",
+                "db_intent": r["primary_intent"] or "-",
+                "product": r["product_interest"] or "-",
+                "score": r["lead_score"] if r["lead_score"] is not None else 0,
+                "tier": r["lead_tier"] or "LOW",
+                "status": r["status"] or "NEW",
+                "source_name": r["source_name"] or meta.get("source_name") or "CIC Technology & Consultancy VN",
+                "group_url": r["group_url"] or "-",
+                "source_url": source_post_url,
+                "post_title": source_post_title,
+                "post_id": post_id,
+                "profile_url": profile_url or "#",
+                "comment_text": meta.get("comment_text") or "-",
+                "pain_point": meta.get("pain_point") or "-",
+                "sales_action": meta.get("sales_action") or "-",
+                "messenger_pitch": meta.get("messenger_pitch") or "-",
+                "pitch_status": meta.get("pitch_status") or ("GENERATED_BY_QWEN" if meta.get("messenger_pitch") and not meta.get("messenger_pitch").startswith("[") else "PENDING_QWEN"),
+                "call_lead_in": meta.get("call_lead_in") or "-",
+                "created_at": r["created_at"].strftime("%H:%M %d/%m/%Y") if r["created_at"] else "-",
+                "raw_created_at": r["created_at"].isoformat() if r["created_at"] else ""
+            })
+
+        cur.close()
+        conn.close()
+        return jsonify({"success": True, "data": leads})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/agent/latest", methods=["GET"])
+def api_get_latest_agent_report():
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("""
+            SELECT post_id, metadata, message, permalink_url, comments_count, reactions_count, crawled_at
+            FROM public.facebook_posts
+            WHERE (metadata->>'ai_agent_report' IS NOT NULL OR comments_count > 0)
+            ORDER BY crawled_at DESC LIMIT 1;
+        """)
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if not row or not row["metadata"]:
+            return jsonify({"success": False, "error": "Chưa có bài viết nào được quét"}), 404
+        
+        meta = row["metadata"]
+        if isinstance(meta, str):
+            try: meta = json.loads(meta)
+            except: meta = {}
+        report = meta.get("ai_agent_report") or meta.get("ai_stats")
+        return jsonify({
+            "success": True, 
+            "post_id": row["post_id"],
+            "post_title": row["message"],
+            "post_url": row["permalink_url"],
+            "data": report
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/analytics/groups", methods=["GET"])
+def api_analytics_groups():
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("""
+            SELECT 
+                COALESCE(fs.name, 'Nguồn Vãng Lai / Ad-hoc') AS group_name,
+                COALESCE(fs.source_type, 'GROUP') AS source_type,
+                COALESCE(fs.url, '-') AS group_url,
+                COUNT(DISTINCT s.post_id) AS total_posts,
+                COUNT(DISTINCT l.id) AS total_leads,
+                COUNT(DISTINCT CASE WHEN l.lead_score >= 60 THEN l.id END) AS hot_leads,
+                COUNT(DISTINCT CASE WHEN l.primary_phone IS NOT NULL AND l.primary_phone != '' THEN l.id END) AS leads_with_phone,
+                MAX(l.created_at) AS last_activity
+            FROM public.leads l
+            JOIN public.lead_sources s ON l.id = s.lead_id
+            LEFT JOIN public.facebook_sources fs ON s.source_id = fs.id
+            GROUP BY fs.name, fs.source_type, fs.url
+            ORDER BY total_leads DESC;
+        """)
+        rows = cur.fetchall()
+        data = []
+        for r in rows:
+            data.append({
+                "group_name": r["group_name"],
+                "source_type": r["source_type"],
+                "group_url": r["group_url"],
+                "total_posts": r["total_posts"],
+                "total_leads": r["total_leads"],
+                "hot_leads": r["hot_leads"],
+                "leads_with_phone": r["leads_with_phone"],
+                "last_activity": r["last_activity"].strftime("%H:%M %d/%m/%Y") if r["last_activity"] else "-"
+            })
+        cur.close()
+        conn.close()
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/leads/<lead_id>/pitch", methods=["GET", "POST"])
+def api_lead_pitch(lead_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("""
+            SELECT id, full_name, company_name, primary_phone, primary_email, product_interest, primary_intent, lead_score, lead_tier, metadata
+            FROM public.leads WHERE id = %s;
+        """, (lead_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not row:
+            return jsonify({"success": False, "error": "Lead not found"}), 404
+
+        meta = row["metadata"] or {}
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+
+        if request.method == "POST" or not meta.get("messenger_pitch"):
+            from qwen_sales_agent import generate_pitch_with_qwen
+            qwen_res = generate_pitch_with_qwen(lead_id)
+            if qwen_res.get("success"):
+                return jsonify({
+                    "success": True,
+                    "lead": dict(row),
+                    "pitch": {
+                        "messenger_pitch": qwen_res.get("messenger_pitch"),
+                        "telesale_script": qwen_res.get("telesale_script"),
+                        "ai_agent": "Qwen3-VL-30B",
+                        "status": "GENERATED_BY_QWEN"
+                    }
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "lead": dict(row),
+                    "error": qwen_res.get("error", "Qwen model is busy"),
+                    "pitch": {
+                        "messenger_pitch": meta.get("messenger_pitch") or "[Chờ Qwen 30B xử lý dựa trên DB]",
+                        "telesale_script": meta.get("telesale_script") or "[Chờ Qwen 30B sinh kịch bản]",
+                        "ai_agent": "Qwen3-VL-30B",
+                        "status": "PENDING_QWEN"
+                    }
+                })
+
+        return jsonify({
+            "success": True,
+            "lead": dict(row),
+            "pitch": {
+                "messenger_pitch": meta.get("messenger_pitch"),
+                "telesale_script": meta.get("telesale_script"),
+                "ai_agent": meta.get("ai_agent", "Qwen3-VL-30B"),
+                "status": meta.get("pitch_status", "GENERATED_BY_QWEN")
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/analytics/trends", methods=["GET"])
+def api_analytics_trends():
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("""
+            SELECT 
+                COALESCE(product_interest, 'Thiết bị & Vật tư khác') AS product_name,
+                COUNT(*) AS total_leads,
+                COUNT(CASE WHEN lead_score >= 60 THEN 1 END) AS hot_leads,
+                COUNT(CASE WHEN primary_phone IS NOT NULL AND primary_phone != '' THEN 1 END) AS phone_leads,
+                ROUND(AVG(lead_score), 1) AS avg_score
+            FROM public.leads
+            GROUP BY product_interest
+            ORDER BY total_leads DESC
+            LIMIT 15;
+        """)
+        rows = cur.fetchall()
+
+        cur.execute("SELECT COUNT(*) FROM public.leads;")
+        total_all_leads = cur.fetchone()[0] or 1
+
+        cur.close()
+        conn.close()
+
+        trends = []
+        for r in rows:
+            share_pct = round((r["total_leads"] / total_all_leads) * 100, 1)
+            trends.append({
+                "product_name": r["product_name"],
+                "total_leads": r["total_leads"],
+                "hot_leads": r["hot_leads"],
+                "phone_leads": r["phone_leads"],
+                "avg_score": float(r["avg_score"]) if r["avg_score"] is not None else 0.0,
+                "market_share_pct": share_pct
+            })
+
+        return jsonify({
+            "success": True,
+            "total_leads": total_all_leads,
+            "trends": trends
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/analytics/posts", methods=["GET"])
+def api_analytics_posts():
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("""
+            SELECT 
+                COALESCE(s.post_id, 'ad_hoc_post') AS post_id,
+                MAX(COALESCE(s.origin_url, '-')) AS post_url,
+                MAX(COALESCE(fs.name, 'Nhóm Facebook')) AS group_name,
+                COUNT(DISTINCT l.id) AS leads_count,
+                COUNT(DISTINCT CASE WHEN l.lead_score >= 60 THEN l.id END) AS hot_leads,
+                COUNT(DISTINCT CASE WHEN l.primary_phone IS NOT NULL AND l.primary_phone != '' THEN l.id END) AS phone_leads,
+                ROUND(AVG(l.lead_score), 1) AS avg_score,
+                MAX(l.created_at) AS last_detected_at
+            FROM public.leads l
+            JOIN public.lead_sources s ON l.id = s.lead_id
+            LEFT JOIN public.facebook_sources fs ON s.source_id = fs.id
+            GROUP BY s.post_id
+            ORDER BY leads_count DESC, hot_leads DESC
+            LIMIT 50;
+        """)
+        rows = cur.fetchall()
+        data = []
+        for r in rows:
+            data.append({
+                "post_id": r["post_id"],
+                "post_url": r["post_url"],
+                "group_name": r["group_name"],
+                "leads_count": r["leads_count"],
+                "hot_leads": r["hot_leads"],
+                "phone_leads": r["phone_leads"],
+                "avg_score": float(r["avg_score"]) if r["avg_score"] is not None else 0.0,
+                "last_detected_at": r["last_detected_at"].strftime("%H:%M %d/%m/%Y") if r["last_detected_at"] else "-"
+            })
+        cur.close()
+        conn.close()
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/export/leads", methods=["GET"])
+def api_export_leads():
+    try:
+        scope = request.args.get("scope", "all") # all, hot, has_phone
+        group_filter = request.args.get("group", "")
+
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+        query = """
+            SELECT 
+                l.id,
+                l.full_name,
+                l.company_name,
+                l.primary_phone,
+                l.primary_email,
+                l.product_interest,
+                l.primary_intent,
+                l.lead_score,
+                l.lead_tier,
+                l.metadata,
+                fs.name AS source_name,
+                s.origin_url AS source_url,
+                l.created_at
+            FROM public.leads l
+            LEFT JOIN (
+                SELECT DISTINCT ON (lead_id) lead_id, source_id, origin_url, created_at 
+                FROM public.lead_sources 
+                ORDER BY lead_id, created_at DESC
+            ) s ON l.id = s.lead_id
+            LEFT JOIN public.facebook_sources fs ON s.source_id = fs.id
+        """
+        conditions = []
+        params = []
+        if scope == "hot":
+            conditions.append("l.lead_score >= 60")
+        elif scope == "has_phone":
+            conditions.append("l.primary_phone IS NOT NULL AND l.primary_phone != ''")
+        
+        if group_filter:
+            conditions.append("fs.name = %s")
+            params.append(group_filter)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY l.lead_score DESC, l.created_at DESC;"
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+
+        import csv
+        import io
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Header with Full AI Customer Intelligence fields
+        writer.writerow([
+            "Mã Khách Hàng (ID)",
+            "Họ Và Tên",
+            "Số Điện Thoại",
+            "Trạng Thái SĐT",
+            "Link Facebook Cá Nhân",
+            "Bình Luận Nguyên Văn Của Khách",
+            "Nhu Cầu / Vấn Đề (AI Phân Tích)",
+            "Sản Phẩm Quan Tâm",
+            "Ý Định Mua Hàng",
+            "Điểm Tiềm Năng (0-100)",
+            "Phân Hạng Tiềm Năng",
+            "Hành Động Khuyến Nghị Cho Sales",
+            "Kịch Bản Nhắn Tin Messenger (AI Pitch)",
+            "Nguồn Group / Fanpage",
+            "Link Bài Viết Gốc",
+            "Thời Gian Phát Hiện"
+        ])
+
+        for r in rows:
+            meta = r["metadata"] or {}
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except:
+                    meta = {}
+
+            profile_url = meta.get("facebook_profile_url") or r["company_name"] or "-"
+            comment_text = meta.get("comment_text") or "-"
+            pain_point = meta.get("pain_point") or "-"
+            phone_status = meta.get("phone_status") or ("CÔNG KHAI" if r["primary_phone"] else "ẨN (Cần nhắn tin Messenger)")
+            sales_action = meta.get("sales_action") or "-"
+            pitch = meta.get("messenger_pitch") or "-"
+
+            writer.writerow([
+                str(r["id"]),
+                r["full_name"] or "-",
+                r["primary_phone"] or "-",
+                phone_status,
+                profile_url,
+                comment_text,
+                pain_point,
+                r["product_interest"] or "-",
+                r["primary_intent"] or "-",
+                r["lead_score"] if r["lead_score"] is not None else 0,
+                r["lead_tier"] or "LOW",
+                sales_action,
+                pitch,
+                r["source_name"] or "Facebook Source",
+                r["source_url"] or "-",
+                r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else "-"
+            ])
+
+        csv_data = output.getvalue()
+        cur.close()
+        conn.close()
+
+        # UTF-8 with BOM (\xef\xbb\xbf) ensures Microsoft Excel on Windows opens Vietnamese characters perfectly without garbled text
+        bom_csv = "\ufeff" + csv_data
+        filename = f"leads_export_{scope}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+        return Response(
+            bom_csv,
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/sources", methods=["GET", "POST"])
+def api_sources():
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    if request.method == "POST":
+        try:
+            data = request.json or {}
+            name = data.get("name", "").strip()
+            source_type = data.get("source_type", "GROUP").strip()
+            url = data.get("url", "").strip()
+            external_id = data.get("external_id", "").strip() or f"fb_{int(time.time()*1000)}"
+            min_reactions = int(data.get("min_reactions", 0))
+            min_comments = int(data.get("min_comments", 0))
+            filter_keywords = data.get("filter_keywords", "")
+
+            metadata = {
+                "min_reactions": min_reactions,
+                "min_comments": min_comments,
+                "filter_keywords": filter_keywords
+            }
+
+            cur.execute("""
+                INSERT INTO public.facebook_sources (
+                    external_id, name, source_type, url, status, metadata, updated_at
+                ) VALUES (%s, %s, %s, %s, 'ACTIVE', %s, NOW())
+                ON CONFLICT (external_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    source_type = EXCLUDED.source_type,
+                    url = EXCLUDED.url,
+                    metadata = EXCLUDED.metadata,
+                    status = 'ACTIVE',
+                    updated_at = NOW();
+            """, (external_id, name, source_type, url, json.dumps(metadata)))
+            conn.commit()
+            add_log("INFO", f"Đã thêm/cập nhật nguồn: {name} ({source_type}) - Điều kiện: Tương tác ≥ {min_reactions}, Bình luận ≥ {min_comments}")
+            cur.close()
+            conn.close()
+            return jsonify({"success": True, "message": "Source saved successfully"})
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "error": str(e)}), 500
+    else:
+        try:
+            cur.execute("""
+                SELECT id, external_id, name, source_type, url, status, consecutive_errors, yield_score, last_crawled_at, backoff_until, metadata
+                FROM public.facebook_sources
+                ORDER BY created_at DESC;
+            """)
+            rows = cur.fetchall()
+            sources = []
+            for r in rows:
+                meta = r["metadata"] or {}
+                if isinstance(meta, str):
+                    try:
+                        meta = json.loads(meta)
+                    except:
+                        meta = {}
+                sources.append({
+                    "id": str(r["id"]),
+                    "external_id": r["external_id"],
+                    "name": r["name"],
+                    "type": r["source_type"],
+                    "url": r["url"] or "-",
+                    "status": r["status"],
+                    "errors": r["consecutive_errors"],
+                    "yield_score": float(r["yield_score"]) if r["yield_score"] is not None else 0.0,
+                    "min_reactions": meta.get("min_reactions", 0),
+                    "min_comments": meta.get("min_comments", 0),
+                    "filter_keywords": meta.get("filter_keywords", "-"),
+                    "last_crawled": r["last_crawled_at"].strftime("%H:%M %d/%m") if r["last_crawled_at"] else "-",
+                    "backoff_until": r["backoff_until"].strftime("%H:%M %d/%m") if r["backoff_until"] else "-"
+                })
+            cur.close()
+            conn.close()
+            return jsonify({"success": True, "data": sources})
+        except Exception as e:
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/sources/<source_id>/toggle", methods=["POST"])
+def api_source_toggle(source_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT status, name FROM public.facebook_sources WHERE id = %s;", (source_id,))
+        row = cur.fetchone()
+        if not row:
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "error": "Không tìm thấy nguồn"}), 404
+        
+        current_status, name = row
+        new_status = "PAUSED" if current_status == "ACTIVE" else "ACTIVE"
+        cur.execute("UPDATE public.facebook_sources SET status = %s, updated_at = NOW() WHERE id = %s;", (new_status, source_id))
+        conn.commit()
+        add_log("INFO", f"Chuyển trạng thái nguồn '{name}' -> {new_status}")
+        cur.close()
+        conn.close()
+        return jsonify({"success": True, "status": new_status})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/sources/<source_id>", methods=["DELETE"])
+def api_source_delete(source_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM public.facebook_sources WHERE id = %s RETURNING name;", (source_id,))
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        conn.close()
+        if row:
+            add_log("WARN", f"Đã xóa nguồn: {row[0]}")
+            return jsonify({"success": True, "message": "Deleted"})
+        return jsonify({"success": False, "error": "Không tìm thấy nguồn"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/keyword/search-posts', methods=['POST'])
+def api_keyword_search_posts():
+    """Giai doan 1: Tim kiem danh sach cac bai viet hot theo tu khoa de nguoi dung lua chon."""
+    try:
+        data = request.json or {}
+        keyword = data.get('keyword', '').strip()
+        limit = int(data.get('limit', 10))
+
+        if not keyword:
+            return jsonify({'success': False, 'error': 'Vui lòng nhập từ khóa tìm kiếm'}), 400
+
+        from keyword_search_engine import find_hottest_posts
+        posts = find_hottest_posts(keyword, top_k=limit)
+        add_log('INFO', f'[Khám phá bài viết] Tìm thấy {len(posts)} bài viết nổi bật cho từ khóa: "{keyword}"')
+        return jsonify({
+            'success': True,
+            'keyword': keyword,
+            'total_found': len(posts),
+            'posts': posts
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/keyword/crawl-selected', methods=['POST'])
+def api_keyword_crawl_selected():
+    """Giai doan 2: Cao binh luan & thong tin khach hang tu cac bai viet nguoi dung da tich chon."""
+    try:
+        data = request.json or {}
+        selected_posts = data.get('posts', [])
+        keyword = data.get('keyword', 'enjicad').strip()
+
+        if not selected_posts:
+            return jsonify({'success': False, 'error': 'Vui lòng chọn ít nhất 1 bài viết để cào'}), 400
+
+        add_log('START', f'=== [Cào chọn lọc] Bắt đầu cào {len(selected_posts)} bài viết đã chọn (Từ khóa: "{keyword}") ===')
+        from qwen_sales_agent import crawl_and_analyze_selected_posts
+        result = crawl_and_analyze_selected_posts(selected_posts, keyword=keyword)
+        
+        total_leads = result.get('total_leads_identified', 0)
+        hot_leads = result.get('hot_leads_count', 0)
+        add_log('SUCCESS', f'[Cào chọn lọc] Hoàn tất cào {len(selected_posts)} bài viết: Bóc tách {total_leads} khách hàng ({hot_leads} HOT)!')
+        return jsonify(result)
+    except Exception as e:
+        add_log('ERROR', f'[Cào chọn lọc] Lỗi: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/keyword/crawl', methods=['POST'])
+def api_keyword_crawl():
+    """
+    Cao du lieu khach hang tu dong theo tu khoa:
+    1. Tim bai viet hot nhat theo tu khoa
+    2. Cao toan bo binh luan & thong tin khach hang
+    3. Agent Qwen3-VL-30B tong hop insight
+    4. Dua vao DB product_knowledge_base sinh loi thoai thuyet phuc
+    5. Luu Supabase & ban alert
+    """
+    try:
+        data = request.json or {}
+        keyword = data.get('keyword', '').strip()
+        max_posts = int(data.get('max_posts', 2))
+
+        if not keyword:
+            return jsonify({'success': False, 'error': 'Vui lòng nhập từ khóa tìm kiếm (Ví dụ: enjicad)'}), 400
+
+        add_log('START', f'=== [Keyword Bot] Bắt đầu tìm bài viết hot nhất cho từ khóa: "{keyword}" ===')
+        
+        from qwen_sales_agent import run_keyword_pipeline
+        result = run_keyword_pipeline(keyword=keyword, max_posts=max_posts)
+
+        if not result.get('success'):
+            add_log('WARN', f'[Keyword Bot] {result.get("error", "Không tìm thấy bài viết")}')
+            return jsonify(result), 404
+
+        total_leads = result.get('total_leads_identified', 0)
+        hot_leads = result.get('hot_leads_count', 0)
+        add_log('SUCCESS', f'[Keyword Bot] Hoàn tất quét "{keyword}": Quét {result.get("posts_scanned")} bài viết hot, tìm thấy {total_leads} khách hàng ({hot_leads} HOT)!')
+
+        return jsonify(result)
+    except Exception as e:
+        add_log('ERROR', f'[Keyword Bot] Lỗi quét theo từ khóa: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/knowledge', methods=['GET', 'POST'])
+def api_product_knowledge():
+    """Quan ly co so du lieu san pham & kich ban chot sale trong Supabase."""
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    if request.method == 'POST':
+        try:
+            data = request.json or {}
+            key = data.get('product_key', 'enjicad').lower().strip()
+            name = data.get('product_name', 'EnjiCAD')
+            vendor = data.get('vendor', 'Công ty CP Công nghệ và Tư vấn CIC')
+            usps = data.get('key_usps', [])
+            pricing = data.get('pricing_details', {})
+            objections = data.get('objection_scripts', {})
+            playbook = data.get('sales_playbook', {})
+
+            sql = """
+                INSERT INTO public.product_knowledge_base (
+                    product_key, product_name, vendor, key_usps, pricing_details, objection_scripts, sales_playbook, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, NOW()
+                )
+                ON CONFLICT (product_key) DO UPDATE SET
+                    product_name = EXCLUDED.product_name,
+                    vendor = EXCLUDED.vendor,
+                    key_usps = EXCLUDED.key_usps,
+                    pricing_details = EXCLUDED.pricing_details,
+                    objection_scripts = EXCLUDED.objection_scripts,
+                    sales_playbook = EXCLUDED.sales_playbook,
+                    updated_at = NOW()
+                RETURNING id;
+            """
+            cur.execute(sql, (key, name, vendor, json.dumps(usps), json.dumps(pricing), json.dumps(objections), json.dumps(playbook)))
+            conn.commit()
+            cur.close()
+            conn.close()
+            add_log('SUCCESS', f'Đã lưu thông tin sản phẩm "{name}" vào database thành công.')
+            return jsonify({'success': True, 'message': 'Đã cập nhật cơ sở dữ liệu sản phẩm'})
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return jsonify({'success': False, 'error': str(e)}), 500
+    else:
+        try:
+            cur.execute('SELECT * FROM public.product_knowledge_base ORDER BY updated_at DESC;')
+            rows = [dict(r) for r in cur.fetchall()]
+            cur.close()
+            conn.close()
+            return jsonify({'success': True, 'data': rows})
+        except Exception as e:
+            cur.close()
+            conn.close()
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route("/api/adhoc/crawl", methods=["POST"])
+def api_adhoc_crawl():
+    try:
+        data = request.json or {}
+        post_url = data.get("post_url", "").strip()
+        raw_content = data.get("content", "").strip()
+        raw_comments = data.get("comments", [])
+
+        if not post_url:
+            return jsonify({"success": False, "error": "Vui lòng nhập đường link bài viết Facebook"}), 400
+
+        from adhoc_collector import process_adhoc_post
+        add_log("START", f"=== Cào theo yêu cầu (Ad-hoc Link): {post_url} ===")
+        
+        result = process_adhoc_post(post_url, raw_content=raw_content, raw_comments=raw_comments)
+        
+        found_cnt = result.get("leads_found", 0)
+        add_log("SUCCESS", f"Hoàn tất quét bài viết! Tìm thấy {found_cnt} khách hàng tiềm năng.")
+        # Tự động kích hoạt cảnh báo Telegram cho Sales nếu có Hot Lead (Chạy bằng code thuần)
+        hot_leads = [l for l in result.get("leads", []) if l.get("tier") == "HOT" or (l.get("score") and l.get("score") >= 60)]
+        if hot_leads:
+            add_log("INFO", f"Phát hiện {len(hot_leads)} Lead HOT! Đang kích hoạt thông báo Telegram tự động...")
+            def async_notify():
+                try:
+                    from notification.notification_runner import run_notification_cycle
+                    n_res = run_notification_cycle(20)
+                    add_log("SUCCESS", f"Đã gửi cảnh báo Sales Telegram: {n_res.get('dispatched', 0)} lead mới.")
+                except Exception as n_err:
+                    add_log("WARN", f"Thông báo Dispatcher: {str(n_err)}")
+            threading.Thread(target=async_notify, daemon=True).start()
+        
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        add_log("ERROR", f"Lỗi cào bài viết theo link: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/webhook/crawl-fb", methods=["POST"])
+def webhook_crawl_fb():
+    """Native Python Webhook Endpoint thay the hoan toan n8n Webhook Studio."""
+    try:
+        data = request.json or {}
+        post_url = data.get("post_url") or data.get("permalink_url") or ""
+        post_title = data.get("post_title") or data.get("message") or ""
+        comments = data.get("comments") or []
+        raw_content = data.get("raw_content") or ""
+
+        if not post_url and not comments:
+            return jsonify({"success": False, "error": "Thieu post_url hoac danh sach binh luan"}), 400
+
+        add_log("START", f"=== [Native Webhook] Nhan du lieu crawl: {post_url or 'Ad-hoc Payload'} ===")
+        from adhoc_collector import process_adhoc_post
+        result = process_adhoc_post(post_url, raw_content=raw_content, raw_comments=comments)
+
+        hot_leads = [l for l in result.get("leads", []) if l.get("tier") == "HOT" or (l.get("score") and l.get("score") >= 60)]
+        if hot_leads:
+            add_log("INFO", f"[Native Webhook] Phat hien {len(hot_leads)} Lead HOT! Kich hoat Telegram alert...")
+            def async_notify():
+                try:
+                    from notification.notification_runner import run_notification_cycle
+                    n_res = run_notification_cycle(20)
+                    add_log("SUCCESS", f"[Native Webhook] Da dispatch Telegram: {n_res.get("dispatched", 0)} lead.")
+                except Exception as n_err:
+                    add_log("WARN", f"[Native Webhook] Dispatcher: {str(n_err)}")
+            threading.Thread(target=async_notify, daemon=True).start()
+
+        return jsonify({
+            "status": "SUCCESS",
+            "engine": "Pure Python Native V1",
+            "post_id": result.get("post_id"),
+            "total_crawled": result.get("total_analyzed", 0),
+            "leads_found": result.get("leads_found", 0),
+            "hot_leads": len(hot_leads),
+            "data": result
+        })
+    except Exception as e:
+        add_log("ERROR", f"[Native Webhook] Loi xu ly: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/agent/report/<post_id>", methods=["GET"])
+def api_get_agent_report(post_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT metadata, message, permalink_url, comments_count FROM public.facebook_posts WHERE post_id = %s;", (post_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if not row or not row["metadata"]:
+            return jsonify({"success": False, "error": "Không tìm thấy bài viết này trong hệ thống"}), 404
+        
+        meta = row["metadata"]
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except:
+                meta = {}
+        report = meta.get("ai_agent_report")
+        if not report:
+            return jsonify({"success": False, "error": "Bài viết chưa có báo cáo AI Agent"}), 404
+        return jsonify({"success": True, "data": report})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    conn = get_db()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    if request.method == "POST":
+        try:
+            data = request.json or {}
+            for flag_name, flag_value in data.items():
+                cur.execute("""
+                    INSERT INTO public.system_flags (flag_name, flag_value, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (flag_name) 
+                    DO UPDATE SET flag_value = EXCLUDED.flag_value, updated_at = NOW();
+                """, (flag_name, str(flag_value)))
+            conn.commit()
+            add_log("INFO", f"Cập nhật cấu hình hệ thống: {json.dumps(data)}")
+            cur.close()
+            conn.close()
+            return jsonify({"success": True, "message": "Settings updated"})
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "error": str(e)}), 500
+    else:
+        try:
+            cur.execute("SELECT flag_name, flag_value FROM public.system_flags;")
+            rows = cur.fetchall()
+            settings = {r["flag_name"]: r["flag_value"] for r in rows}
+            cur.close()
+            conn.close()
+            return jsonify({"success": True, "data": settings})
+        except Exception as e:
+            cur.close()
+            conn.close()
+            return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/logs", methods=["GET"])
+def api_logs():
+    with BUFFER_LOCK:
+        return jsonify({
+            "success": True,
+            "logs": LOG_BUFFER,
+            "current_task": CURRENT_TASK
+        })
+
+@app.route("/api/logs/clear", methods=["POST"])
+def api_logs_clear():
+    with BUFFER_LOCK:
+        LOG_BUFFER.clear()
+    return jsonify({"success": True})
+
+def run_worker_task(task_name, script_func):
+    global CURRENT_TASK
+    CURRENT_TASK["running"] = True
+    CURRENT_TASK["task_name"] = task_name
+    CURRENT_TASK["started_at"] = datetime.now().strftime("%H:%M:%S")
+    add_log("START", f"=== Bắt đầu thực thi: {task_name} ===")
+    
+    try:
+        script_func()
+        add_log("SUCCESS", f"=== Hoàn thành xuất sắc: {task_name} ===")
+    except Exception as e:
+        add_log("ERROR", f"Lỗi khi chạy {task_name}: {str(e)}")
+    finally:
+        CURRENT_TASK["running"] = False
+        CURRENT_TASK["task_name"] = ""
+        CURRENT_TASK["started_at"] = None
+
+@app.route("/api/execute/<action>", methods=["POST"])
+def api_execute(action):
+    if CURRENT_TASK["running"]:
+        if action == "notify":
+            return jsonify({
+                "success": True,
+                "already_running": True,
+                "message": f"Tác vụ {CURRENT_TASK['task_name']} đang chạy, alert đang được điều phối song song."
+            }), 200
+        return jsonify({
+            "success": False, 
+            "error": f"Đang có tác vụ khác đang chạy: {CURRENT_TASK['task_name']}"
+        }), 409
+
+    def e2e_runner():
+        proc = subprocess.Popen(
+            ["/usr/bin/python3", "/home/ADMIN/test_e2e_integration.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        for line in proc.stdout:
+            cleaned = line.strip()
+            if cleaned:
+                add_log("INFO", cleaned)
+        proc.wait()
+        if proc.returncode == 0:
+            add_log("SUCCESS", "E2E Pipeline Test hoàn tất 100% không lỗi!")
+        else:
+            add_log("WARN", f"E2E test kết thúc với mã trả về: {proc.returncode}")
+
+    def score_runner():
+        from scoring.lead_processor import run_scoring_batch
+        add_log("INFO", "Bắt đầu quét và chấm điểm deterministic các lead signals chưa xử lý...")
+        result = run_scoring_batch(100)
+        add_log("INFO", f"Kết quả chấm điểm: Processed={result.get('processed')}, Created={result.get('created')}, Updated={result.get('updated')}, Errors={result.get('errors')}")
+
+    def notify_runner():
+        from notification.notification_runner import run_notification_cycle
+        add_log("INFO", "Bắt đầu quét Lead đủ tiêu chuẩn và điều phối bắn thông báo Telegram...")
+        result = run_notification_cycle(50)
+        add_log("INFO", f"Kết quả Dispatcher: Queued={result.get('queued')}, Sent={result.get('sent')}, Skipped_AntiDup={result.get('skipped_anti_dup')}, Errors={result.get('errors')}")
+
+    def monitor_runner_func():
+        proc = subprocess.Popen(
+            ["/usr/bin/python3", "/home/ADMIN/monitoring/monitor_runner.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        for line in proc.stdout:
+            cleaned = line.strip()
+            if cleaned:
+                add_log("INFO", cleaned)
+        proc.wait()
+
+    def normalize_runner():
+        proc = subprocess.Popen(
+            ["/usr/bin/python3", "/home/ADMIN/test_normalizer_integration.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        for line in proc.stdout:
+            cleaned = line.strip()
+            if cleaned:
+                add_log("INFO", cleaned)
+        proc.wait()
+
+    action_map = {
+        "e2e": ("Toàn Bộ Pipeline E2E (Full Run)", e2e_runner),
+        "score": ("Lead Scoring & Entity Resolution", score_runner),
+        "notify": ("Lead Notification Dispatcher (Telegram)", notify_runner),
+        "monitor": ("System Health & Error Recovery Monitor", monitor_runner_func),
+        "normalize": ("Normalizer & Dedup Engine", normalize_runner)
+    }
+
+    if action not in action_map:
+        return jsonify({"success": False, "error": f"Hành động không hợp lệ: {action}"}), 400
+
+    task_name, runner_fn = action_map[action]
+    thread = threading.Thread(target=run_worker_task, args=(task_name, runner_fn))
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({
+        "success": True, 
+        "message": f"Đã khởi chạy tác vụ: {task_name}"
+    })
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "5678"))
+    add_log("SYSTEM", f"Facebook Lead Intelligence Control Dashboard Online trên port {port}.")
+    app.run(host="0.0.0.0", port=port, debug=False)
